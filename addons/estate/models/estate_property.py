@@ -1,12 +1,17 @@
 from odoo import fields, models
 
 
-class Property(models.Model):
-    _name = "estate_property"
+class EstateProperty(models.Model):
+    _name = "estate.property"
     _description = "Property of the estate"
 
     name = fields.Char('Title', required=True)
     description = fields.Text('Description')
+    property_type_id = fields.Many2one('estate.property.type', string='Property Type')
+    buyer_id = fields.Many2one("res.partner", string="Buyer")
+    salesperson_id = fields.Many2one("res.users", string="Salesperson", default=lambda self: self.env.user)
+    tag_ids = fields.Many2many("estate.property.tag", string="Property Tag")
+    offer_ids = fields.One2many("estate.property.offer", "property_id")
     postcode = fields.Integer('Postcode')
     data_availability = fields.Date('Data Availability', copy=False,
                                     default=fields.Date.add(fields.Date.today(), month=3))
