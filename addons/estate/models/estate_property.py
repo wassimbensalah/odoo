@@ -1,4 +1,4 @@
-from odoo import fields, models
+from odoo import api, fields, models, exceptions
 
 
 class EstateProperty(models.Model):
@@ -28,3 +28,51 @@ class EstateProperty(models.Model):
     state = fields.Selection(
         [('new', 'New'), ('offer received', 'Offer Received'), ('offer accepted', 'Offer Accepted'), ('sold', 'Sold'),
          ('canceled', 'Canceled')], default='new', required=True, copy=False)
+    total_area = fields.Float(compute="_compute_total_area")
+    best_price = fields.Float("Best Offer", compute="_determine_best_price_offer")
+
+    _sql_constraints = [
+        ("check_expected_price", "CHECK(expected_price > 0)", "The expected price must have a positive value"),
+        ("check_selling_price", "CHECK(selling_price > 0)", "The selling price must have a positive value"), ]
+
+    def action_set_property_as_sold(self):
+        for record in self:
+            if record.state == "canceled":
+                raise exceptions.UserError("A canceled property can't be set as sold")
+            record.state = "sold"
+        return True
+
+    def action_set_property_as_canceled(self):
+        for record in self:
+            if record.state == "sold":
+                raise exceptions.UserError("A sold property can't be set as canceled")
+            record.state = "canceled"
+        return True
+
+    @api.depends("living_area", "garden_area", "offer_ids")
+    def _compute_total_area(self):
+        for record in self:
+            record.total_area = record.living_area + record.garden_area
+
+    def _determine_best_price_offer(self):
+        for record in self:
+            price = 0
+            for offer in record.offer_ids:
+                if offer.price > price:
+                    price = offer.price
+            record.best_price = price
+
+    @api.onchange("garden")
+    def _onchange(self):
+        if self.garden is True:
+            self.garden_area = 10
+            self.garden_orientation = "north"
+        else:
+            self.garden_area = 0
+            self.garden_orientation = ""
+
+    @api.constrains('selling_price', 'expected_price')
+    def _check_selling_price(self):
+        for record in self:
+            if record.selling_price < record.expected_price * 0.9:
+                raise exceptions.ValidationError("The selling price should not be lower than 90% of the expected price")
