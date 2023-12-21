@@ -1,9 +1,11 @@
 from odoo import api, fields, models, exceptions
+from odoo.tools.float_utils import float_compare
 
 
 class EstateProperty(models.Model):
     _name = "estate.property"
     _description = "Property of the estate"
+    _order = "id desc"
 
     name = fields.Char('Title', required=True)
     description = fields.Text('Description')
@@ -26,8 +28,8 @@ class EstateProperty(models.Model):
     garden_orientation = fields.Selection([('north', 'North'), ('south', 'South'), ('east', 'East'), ('west', 'West')])
     active = fields.Boolean('Active', default=True)
     state = fields.Selection(
-        [('new', 'New'), ('offer received', 'Offer Received'), ('offer accepted', 'Offer Accepted'), ('sold', 'Sold'),
-         ('canceled', 'Canceled')], default='new', required=True, copy=False)
+        [('new', 'New'), ('offer_received', 'Offer Received'), ('offer_accepted', 'Offer Accepted'), ('sold', 'Sold'),
+         ('canceled', 'Canceled')], string="State", default='new', required=True, copy=False)
     total_area = fields.Float(compute="_compute_total_area")
     best_price = fields.Float("Best Offer", compute="_determine_best_price_offer")
 
@@ -74,5 +76,14 @@ class EstateProperty(models.Model):
     @api.constrains('selling_price', 'expected_price')
     def _check_selling_price(self):
         for record in self:
-            if record.selling_price < record.expected_price * 0.9:
+            if float_compare(record.selling_price, 0.0, precision_digits=2) == 0 :
+                continue
+
+            if float_compare(record.selling_price, record.expected_price * 0.9, precision_digits=2) < 0:
                 raise exceptions.ValidationError("The selling price should not be lower than 90% of the expected price")
+
+    @api.ondelete(at_uninstall=False)
+    def unlink_property(self):
+        if not set(self.mapped("state")) <= {"new", "canceled"}:
+            raise exceptions.UserError("Only new and canceled properties can be deleted.")
+

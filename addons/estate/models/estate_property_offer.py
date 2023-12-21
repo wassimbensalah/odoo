@@ -1,11 +1,12 @@
 from odoo import api, fields, models, exceptions
+from odoo.tools.float_utils import float_compare
 from datetime import datetime
-
 
 
 class Offer(models.Model):
     _name = "estate.property.offer"
     _description = "Offer for the estate property"
+    _order = "price desc"
 
     price = fields.Float("Price")
     status = fields.Selection([('accepted', 'Accepted'), ('refused', 'Refused')], copy=False)
@@ -13,6 +14,9 @@ class Offer(models.Model):
     property_id = fields.Many2one('estate.property', required=True)
     validity = fields.Integer('Validity (days)', default=7)
     date_deadline = fields.Date("Deadline", compute="_compute_deadline", inverse="_inverse_deadline")
+    property_state = fields.Selection(string="Property State", related="property_id.state")
+    property_type_id = fields.Many2one("estate.property.type", related="property_id.property_type_id", store=True)
+
 
     _sql_constraints = [
         ('check_price', 'CHECK(price > 0)',
@@ -33,6 +37,7 @@ class Offer(models.Model):
         for record in self:
             record.status = "refused"
         return True
+
     @api.depends("create_date", "validity", "date_deadline")
     def _compute_deadline(self):
         for record in self:
@@ -49,4 +54,16 @@ class Offer(models.Model):
             date_difference = (d2 - d1).days
             print("date_difference: ", date_difference)
             record.validity = date_difference
+
+    def create(self, vals):
+        if vals.get("property_id") and vals.get("price"):
+            prop = self.env["estate.property"].browse(vals["property_id"])
+            # We check if the offer is higher than the existing offers
+            if prop.offer_ids:
+                max_offer = max(prop.mapped("offer_ids.price"))
+                if float_compare(vals["price"], max_offer, precision_rounding=0.01) <= 0:
+                    raise exceptions.UserError("The offer must be higher than %.2f" % max_offer)
+            prop.state = "offer_received"
+        return super().create(vals)
+
 
